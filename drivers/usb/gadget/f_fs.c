@@ -19,6 +19,7 @@
 /* #define VERBOSE_DEBUG */
 
 #include <linux/blkdev.h>
+#include <linux/freezer.h>
 #include <linux/pagemap.h>
 #include <linux/export.h>
 #include <linux/hid.h>
