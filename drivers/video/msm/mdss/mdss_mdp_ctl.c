@@ -3785,6 +3785,8 @@ int mdss_mdp_ctl_update_fps(struct mdss_mdp_ctl *ctl)
 		goto exit;
 	}
 
+	mdss_mdp_ctl_perf_update(ctl, 1);
+
 	ATRACE_BEGIN("config_fps");
 	ret = ctl->ops.config_fps_fnc(ctl, new_fps);
 	if (!ret) {
