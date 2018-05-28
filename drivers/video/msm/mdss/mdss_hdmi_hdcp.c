@@ -617,7 +617,7 @@ static int hdmi_hdcp_authentication_part1(struct hdmi_hdcp_ctrl *hdcp_ctrl)
 	INIT_COMPLETION(hdcp_ctrl->r0_checked);
 	DSS_REG_W(io, HDMI_HDCP_RCVPORT_DATA2_0, (((u32)buf[1]) << 8) | buf[0]);
 	timeout_count = wait_for_completion_timeout(
-		&hdcp_ctrl->r0_checked, HZ*2);
+		&hdcp_ctrl->r0_checked, msecs_to_jiffies(2000));
 	link0_status = DSS_REG_R(io, HDMI_HDCP_LINK0_STATUS);
 	is_match = link0_status & BIT(12);
 	if (!is_match) {
@@ -1249,11 +1249,21 @@ int hdmi_hdcp_authenticate(void *input)
 
 	DEV_DBG("%s: %s: Queuing work to start HDCP authentication", __func__,
 		HDCP_STATE_NAME);
+<<<<<<< HEAD
 	mutex_lock(hdcp_ctrl->init_data.mutex);
 	hdcp_ctrl->hdcp_state = HDCP_STATE_AUTHENTICATING;
 	mutex_unlock(hdcp_ctrl->init_data.mutex);
 	queue_delayed_work(hdcp_ctrl->init_data.workq,
 		&hdcp_ctrl->hdcp_auth_work, 0);
+=======
+
+	if (!hdmi_hdcp_load_keys(input))
+		queue_delayed_work(hdcp_ctrl->init_data.workq,
+			&hdcp_ctrl->hdcp_auth_work, msecs_to_jiffies(500));
+	else
+		queue_work(hdcp_ctrl->init_data.workq,
+			&hdcp_ctrl->hdcp_int_work);
+>>>>>>> 13c50d2... drivers: video: mdss: Fix direct references to HZ
 
 	return 0;
 } /* hdmi_hdcp_authenticate */
@@ -1309,6 +1319,7 @@ int hdmi_hdcp_reauthenticate(void *input)
 	/* Disable encryption and disable the HDCP block */
 	DSS_REG_W(io, HDMI_HDCP_CTRL, 0);
 
+<<<<<<< HEAD
 	/* Enable HPD circuitry */
 	DSS_REG_W(hdcp_ctrl->init_data.core_io, HDMI_HPD_CTRL,
 		DSS_REG_R(hdcp_ctrl->init_data.core_io,
@@ -1322,6 +1333,14 @@ int hdmi_hdcp_reauthenticate(void *input)
 	mutex_unlock(hdcp_ctrl->init_data.mutex);
 	queue_delayed_work(hdcp_ctrl->init_data.workq,
 		&hdcp_ctrl->hdcp_auth_work, HZ/2);
+=======
+	if (!hdmi_hdcp_load_keys(input))
+		queue_delayed_work(hdcp_ctrl->init_data.workq,
+			&hdcp_ctrl->hdcp_auth_work, msecs_to_jiffies(500));
+	else
+		queue_work(hdcp_ctrl->init_data.workq,
+			&hdcp_ctrl->hdcp_int_work);
+>>>>>>> 13c50d2... drivers: video: mdss: Fix direct references to HZ
 
 	return ret;
 } /* hdmi_hdcp_reauthenticate */
