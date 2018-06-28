@@ -1495,6 +1495,7 @@ static void udf_fill_inode(struct inode *inode, struct buffer_head *bh)
 		iinfo->i_checkpoint = le32_to_cpu(efe->checkpoint);
 	}
 
+<<<<<<< HEAD
 	/* Sanity checks for files in ICB so that we don't get confused later */
 	if (iinfo->i_alloc_type == ICBTAG_FLAG_AD_IN_ICB) {
 		/*
@@ -1508,6 +1509,17 @@ static void udf_fill_inode(struct inode *inode, struct buffer_head *bh)
 					udf_file_entry_alloc_offset(inode))
 			return;
 	}
+=======
+	/*
+	 * Sanity check length of allocation descriptors and extended attrs to
+	 * avoid integer overflows
+	 */
+	if (iinfo->i_lenEAttr > inode->i_sb->s_blocksize || iinfo->i_lenAlloc > inode->i_sb->s_blocksize)
+		return;
+	/* Now do exact checks */
+	if (udf_file_entry_alloc_offset(inode) + iinfo->i_lenAlloc > inode->i_sb->s_blocksize)
+		return;
+>>>>>>> v3.10.91
 
 	switch (fe->icbTag.fileType) {
 	case ICBTAG_FILE_TYPE_DIRECTORY:
