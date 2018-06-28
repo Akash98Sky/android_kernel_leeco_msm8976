@@ -392,10 +392,18 @@ xfs_xattr_acl_set(struct dentry *dentry, const char *name,
 		struct posix_acl *old_acl = acl;
 
 		error = posix_acl_update_mode(inode, &mode, &acl);
+<<<<<<< HEAD
 		if (!acl)
 			posix_acl_release(old_acl);
 		if (error)
 			goto out_release;
+=======
+
+		if (error)
+			goto out_release;
+		if (!acl)
+			posix_acl_release(old_acl);
+>>>>>>> v3.10.107
 
 		error = xfs_set_mode(inode, mode);
 		if (error)

@@ -275,6 +275,7 @@ static int ocfs2_set_acl(handle_t *handle,
 		name_index = OCFS2_XATTR_INDEX_POSIX_ACL_ACCESS;
 		if (acl) {
 			umode_t mode;
+<<<<<<< HEAD
 
 			ret = posix_acl_update_mode(inode, &mode, &acl);
 			if (ret)
@@ -288,6 +289,15 @@ static int ocfs2_set_acl(handle_t *handle,
 				if (ret)
 					return ret;
 			}
+=======
+			ret = posix_acl_update_mode(inode, &mode, &acl);
+			if (ret)
+				return ret;
+			ret = ocfs2_acl_set_mode(inode, di_bh,
+						 handle, mode);
+			if (ret)
+				return ret;
+>>>>>>> v3.10.107
 		}
 		break;
 	case ACL_TYPE_DEFAULT:
