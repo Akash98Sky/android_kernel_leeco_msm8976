@@ -526,15 +526,12 @@ static void i2c_qup_gpio_free(struct qup_i2c_dev *dev)
 	}
 }
 
-<<<<<<< HEAD
 static const char *i2c_qup_clk_name(struct qup_i2c_dev *dev, struct clk *clk)
 {
 	return (clk == dev->clk) ? "core_clk" : "iface_clk";
 }
-=======
 		if (time_after(jiffies, msecs_to_jiffies(timeout)))
 			return -ETIMEDOUT;
->>>>>>> 50e8ba8... drivers: i2c: Fix direct references to HZ
 
 static void
 i2c_qup_clk_prepare_enable(struct qup_i2c_dev *dev, struct clk *clk)
@@ -723,21 +720,18 @@ qup_issue_read(struct qup_i2c_dev *dev, struct i2c_msg *msg, int *idx,
 		writel_relaxed((QUP_OUT_REC | rd_len),
 			dev->base + QUP_OUT_FIFO_BASE);/* + (*idx+2)); */
 
-<<<<<<< HEAD
 		qup_verify_fifo(dev, (QUP_OUT_REC | rd_len),
 		(uint32_t)dev->base + QUP_OUT_FIFO_BASE + (*idx + 2), 1);
 	} else {
 		writel_relaxed(((QUP_OUT_REC | rd_len) << 16)
 			| QUP_OUT_START | addr,
 			dev->base + QUP_OUT_FIFO_BASE);/* + (*idx)); */
-=======
 		left = wait_for_completion_timeout(&qup->xfer, msecs_to_jiffies(1000));
 		if (!left) {
 			writel(1, qup->base + QUP_SW_RESET);
 			ret = -ETIMEDOUT;
 			goto err;
 		}
->>>>>>> 50e8ba8... drivers: i2c: Fix direct references to HZ
 
 		qup_verify_fifo(dev, QUP_OUT_REC << 16 | rd_len << 16 |
 		QUP_OUT_START | addr,
@@ -1121,18 +1115,15 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		dev->err = 0;
 		dev->complete = &complete;
 
-<<<<<<< HEAD
 		if (qup_i2c_poll_state(dev, QUP_I2C_MAST_GEN, false) != 0) {
 			ret = -EIO;
 			goto out_err;
-=======
 	do {
 		left = wait_for_completion_timeout(&qup->xfer, msecs_to_jiffies(1000));
 		if (!left) {
 			writel(1, qup->base + QUP_SW_RESET);
 			ret = -ETIMEDOUT;
 			goto err;
->>>>>>> 50e8ba8... drivers: i2c: Fix direct references to HZ
 		}
 
 		qup_print_status(dev);
