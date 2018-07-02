@@ -662,7 +662,7 @@ int send_asm_custom_topology(struct audio_client *ac)
 	}
 
 	result = wait_event_timeout(ac->mem_wait,
-			(atomic_read(&ac->mem_state) <= 0), 5*HZ);
+			(atomic_read(&ac->mem_state) <= 0), msecs_to_jiffies(5000));
 	if (!result) {
 		pr_err("%s: Set topologies failed timeout\n", __func__);
 		pr_debug("%s: Set topologies failed after timedout payload = 0x%pK\n",
@@ -3520,7 +3520,7 @@ int q6asm_enc_cfg_blk_pcm_v3(struct audio_client *ac,
 		goto fail_cmd;
 	}
 	rc = wait_event_timeout(ac->cmd_wait,
-			(atomic_read(&ac->cmd_state) >= 0), 5*HZ);
+			(atomic_read(&ac->cmd_state) >= 0), msecs_to_jiffies(5000));
 	if (!rc) {
 		pr_err("%s: timeout opcode[0x%x]\n",
 		       __func__, enc_cfg.hdr.opcode);
@@ -4233,7 +4233,7 @@ static int __q6asm_media_format_block_pcm_v3(struct audio_client *ac,
 		goto fail_cmd;
 	}
 	rc = wait_event_timeout(ac->cmd_wait,
-			(atomic_read(&ac->cmd_state) >= 0), 5*HZ);
+			(atomic_read(&ac->cmd_state) >= 0), msecs_to_jiffies(5000));
 	if (!rc) {
 		pr_err("%s: timeout. waited for format update\n", __func__);
 		rc = -ETIMEDOUT;
@@ -4428,7 +4428,7 @@ static int __q6asm_media_format_block_multi_ch_pcm_v3(struct audio_client *ac,
 		goto fail_cmd;
 	}
 	rc = wait_event_timeout(ac->cmd_wait,
-			(atomic_read(&ac->cmd_state) >= 0), 5*HZ);
+			(atomic_read(&ac->cmd_state) >= 0), msecs_to_jiffies(5000));
 	if (!rc) {
 		pr_err("%s: timeout. waited for format update\n", __func__);
 		rc = -ETIMEDOUT;
