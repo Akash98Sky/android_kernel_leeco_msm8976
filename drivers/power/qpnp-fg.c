@@ -237,7 +237,7 @@ static struct fg_mem_setting settings[FG_MEM_SETTING_MAX] = {
 	SETTING(CHG_TERM_CURRENT, 0x4F8,   2,      250),
 	SETTING(IRQ_VOLT_EMPTY,	 0x458,   3,      3100),
 	SETTING(CUTOFF_VOLTAGE,	 0x40C,   0,      3200),
-	SETTING(VBAT_EST_DIFF,	 0x000,   0,      30),
+	SETTING(VBAT_EST_DIFF,	 0x000,   0,      200),
 	SETTING(DELTA_SOC,	 0x450,   3,      1),
 	SETTING(SOC_MAX,	 0x458,   1,      85),
 	SETTING(SOC_MIN,	 0x458,   2,      15),
@@ -321,6 +321,13 @@ module_param_named(
 );
 
 static int fg_sram_update_period_ms = 30000;
+
+static bool fg_flag = false;
+bool chg_flag = false;
+static int soc_pre = 0;
+static int soc_cur = 0;
+extern bool usb_ac_present;
+
 module_param_named(
 	sram_update_period_ms, fg_sram_update_period_ms, int, S_IRUSR | S_IWUSR
 );
@@ -515,6 +522,10 @@ struct fg_chip {
 	int			status;
 	int			prev_status;
 	int			health;
+	int			old_soc;
+	bool			chg_enabled;
+	bool			old_charge_full;
+	int			soc_past;
 	enum fg_batt_aging_mode	batt_aging_mode;
 	/* capacity learning */
 	struct fg_learning_data	learning_data;
@@ -2097,13 +2108,30 @@ static int get_monotonic_soc_raw(struct fg_chip *chip)
 
 #define EMPTY_CAPACITY		0
 #define DEFAULT_CAPACITY	50
-#define MISSING_CAPACITY	100
+#define MISSING_CAPACITY	44
 #define FULL_CAPACITY		100
 #define FULL_SOC_RAW		0xFF
 static int get_prop_capacity(struct fg_chip *chip)
 {
 	int msoc, rc;
 	bool vbatt_low_sts;
+	int soc_real;
+	union power_supply_propval prop = {0, };
+
+	if (!chip->batt_psy && chip->batt_psy_name) {
+		chip->batt_psy = power_supply_get_by_name(chip->batt_psy_name);
+	}
+
+	if (chip->batt_psy) {
+		chip->batt_psy->get_property(chip->batt_psy,
+				POWER_SUPPLY_PROP_CHARGING_ENABLED, &prop);
+		if(prop.intval == false) {
+			chip->chg_enabled = prop.intval;
+		}
+	} else {
+		/* there is no batt_psy, set the charger enable to defalt */
+		chip->chg_enabled = true;
+	}
 
 	if (chip->use_last_soc && chip->last_soc) {
 		if (chip->last_soc == FULL_SOC_RAW)
@@ -2119,8 +2147,13 @@ static int get_prop_capacity(struct fg_chip *chip)
 	if (!chip->profile_loaded && !chip->use_otp_profile)
 		return DEFAULT_CAPACITY;
 
-	if (chip->charge_full)
-		return FULL_CAPACITY;
+	if (chip->charge_full) {
+		if(chip->chg_enabled) {
+			return FULL_CAPACITY;
+		} else {
+			pr_err("%s: force do not use the charge full status.\n", __func__);
+		}
+	}
 
 	if (chip->soc_empty) {
 		if (fg_debug_mask & FG_POWER_SUPPLY)
@@ -2152,8 +2185,15 @@ static int get_prop_capacity(struct fg_chip *chip)
 		return FULL_CAPACITY;
 	}
 
-	return DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
+	soc_real = DIV_ROUND_CLOSEST((msoc - 1) * (FULL_CAPACITY - 2),
 			FULL_SOC_RAW - 2) + 1;
+	if (((chg_flag==true)||(fg_flag==true))&&(chip->soc_past != soc_real)){
+		chip->soc_past = soc_real;
+		fg_flag = false;
+		chg_flag = false;
+		power_supply_changed(&chip->bms_psy);
+	}
+	return soc_real;
 }
 
 #define HIGH_BIAS	3
@@ -2395,7 +2435,7 @@ static int update_sram_data(struct fg_chip *chip, int *resched_ms)
 	fg_stay_awake(&chip->update_sram_wakeup_source);
 	fg_mem_lock(chip);
 	for (i = 1; i < FG_DATA_MAX; i++) {
-		if (chip->profile_loaded && i >= FG_DATA_BATT_ID)
+		if (chip->profile_loaded && i >= FG_DATA_MAX)
 			continue;
 		rc = fg_mem_read(chip, reg, fg_data[i].address,
 			fg_data[i].len, fg_data[i].offset, 0);
@@ -2455,9 +2495,17 @@ static int update_sram_data(struct fg_chip *chip, int *resched_ms)
 
 		if (fg_debug_mask & FG_MEM_DEBUG_READS)
 			pr_info("%d %lld %d\n", i, temp, fg_data[i].value);
+		soc_cur = fg_data[6].value/100;
+		if(soc_pre != soc_cur){
+			soc_pre = soc_cur;
+			pr_err("soc change display OCV= %d CURRENT= %d SOC= %d\n",
+						fg_data[1].value,fg_data[3].value,soc_cur);
+		}
 	}
 	fg_mem_release(chip);
-
+	fg_flag = true;
+	get_prop_capacity(chip);
+	/*power_supply_changed(&chip->bms_psy);*/
 	/* Backup the registers whenever no error happens during update */
 	if (fg_reset_on_lockup && !chip->ima_error_handling) {
 		if (!rc) {
@@ -3118,6 +3166,15 @@ static int fg_power_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = get_prop_capacity(chip);
+		if((usb_ac_present)&&(val->intval == 0)){
+			val->intval = 1;
+		}
+		if((chip->old_soc != val->intval) || (chip->old_charge_full != chip->charge_full)) {
+			pr_err("%s: soc is changed, the new soc is %d, chg_enabled is %s, full_soc is %d.\n", __func__,
+				val->intval, chip->chg_enabled ? "enabled" : "disabled", chip->charge_full);
+			chip->old_soc = val->intval;
+			chip->old_charge_full = chip->charge_full;
+		}
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY_RAW:
 		val->intval = get_sram_prop_now(chip, FG_DATA_BATT_SOC);
@@ -5049,10 +5106,19 @@ wait:
 	profile_node = of_batterydata_get_best_profile(batt_node, "bms",
 							fg_batt_type);
 	if (!profile_node) {
-		pr_err("couldn't find profile handle\n");
-		old_batt_type = default_batt_type;
-		rc = -ENODATA;
-		goto fail;
+		pr_err("couldn't find profile handle ,reload battery profile\n");
+		schedule_work(&chip->sysfs_restart_work);
+		cancel_delayed_work(&chip->update_sram_data);
+		msleep(1000);
+		schedule_delayed_work(&chip->update_sram_data, msecs_to_jiffies(0));
+		msleep(1000);
+		profile_node = of_batterydata_get_best_profile(batt_node, "bms",
+							fg_batt_type);
+		if (!profile_node) {
+			old_batt_type = default_batt_type;
+			rc = -ENODATA;
+			goto fail;
+		}
 	}
 
 	/* read rslow compensation values if they're available */
@@ -6632,9 +6698,11 @@ static int fg_8950_hw_init(struct fg_chip *chip)
 	return rc;
 }
 
+#define REDO_BATID_DURING_FIRST_EST BIT(4)
 static int fg_hw_init(struct fg_chip *chip)
 {
 	int rc = 0;
+	u8 reg = 0;
 
 	rc = fg_common_hw_init(chip);
 	if (rc) {
@@ -6660,6 +6728,12 @@ static int fg_hw_init(struct fg_chip *chip)
 	}
 	if (rc)
 		pr_err("Unable to initialize PMIC specific FG HW rc=%d\n", rc);
+
+	reg = 0x80;
+	fg_masked_write(chip, 0x4150,reg, reg, 1); // set 0x80 to 0x4150
+
+	reg = REDO_BATID_DURING_FIRST_EST ;
+	fg_masked_write(chip, chip->soc_base + SOC_RESTART,reg, reg, 1); //set 0x10 to 0x4051
 
 	pr_debug("wa_flag=0x%x\n", chip->wa_flag);
 
@@ -7254,6 +7328,7 @@ static int fg_probe(struct spmi_device *spmi)
 		goto of_init_fail;
 	}
 	chip->power_supply_registered = true;
+	chip->chg_enabled = true;
 	/*
 	 * Just initialize the batt_psy_name here. Power supply
 	 * will be obtained later.
