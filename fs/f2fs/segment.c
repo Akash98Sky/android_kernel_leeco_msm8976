@@ -2593,10 +2593,6 @@ static int read_normal_summaries(struct f2fs_sb_info *sbi, int type)
 
 static int restore_curseg_summaries(struct f2fs_sb_info *sbi)
 {
-	struct f2fs_summary_block *s_sits =
-		CURSEG_I(sbi, CURSEG_COLD_DATA)->sum_blk;
-	struct f2fs_summary_block *s_nats =
-		CURSEG_I(sbi, CURSEG_HOT_DATA)->sum_blk;
 	int type = CURSEG_HOT_DATA;
 	int err;
 
