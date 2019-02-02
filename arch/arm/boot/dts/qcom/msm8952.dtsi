@@ -30,14 +30,6 @@
                         compatible = "android,firmware";
                         fstab {
                                 compatible = "android,fstab";
-                                system {
-                                        compatible = "android,system";
-                                        dev = "/dev/block/platform/soc.0/7824900.sdhci/by-name/system";
-                                        type = "ext4";
-                                        mnt_flags = "ro,barrier=1,discard";
-                                        fsmgr_flags = "wait,verify";
-                                        status = "ok";
-                                };
                         };
                 };
         };
@@ -771,9 +763,9 @@
 		qcom,msm-bus,num-cases = <3>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,msm-bus,vectors-KBps =
-		<90 512 0 0>,              /* No vote (ab=0 Mbps, ib=0 Mbps – NO BIMC vote) */
-		<90 512 100000 800000>,    /* SVS  - (ab=100Mbps, ib=800Mbps – 50MHz BIMC freq) */
-		<90 512 100000 1200000>;   /* PERF - (ab=100Mbps, ib=1200Mbps – 75MHz BIMC freq) */
+		<90 512 0 0>,              /* No vote (ab=0 Mbps, ib=0 Mbps, NO BIMC vote) */
+		<90 512 100000 800000>,    /* SVS  - (ab=100Mbps, ib=800Mbps, 50MHz BIMC freq) */
+		<90 512 100000 1200000>;   /* PERF - (ab=100Mbps, ib=1200Mbps, 75MHz BIMC freq) */
 		qcom,bus-vector-names = "MIN", "SVS", "PERF";
 		qcom,tethered-flow-control;
 	};
