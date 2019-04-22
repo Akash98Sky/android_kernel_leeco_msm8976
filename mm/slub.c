@@ -4460,7 +4460,7 @@ static ssize_t order_store(struct kmem_cache *s,
 	unsigned long order;
 	int err;
 
-	err = strict_strtoul(buf, 10, &order);
+	err = kstrtoul(buf, 10, &order);
 	if (err)
 		return err;
 
@@ -4488,7 +4488,7 @@ static ssize_t min_partial_store(struct kmem_cache *s, const char *buf,
 	unsigned long min;
 	int err;
 
-	err = strict_strtoul(buf, 10, &min);
+	err = kstrtoul(buf, 10, &min);
 	if (err)
 		return err;
 
@@ -4508,7 +4508,7 @@ static ssize_t cpu_partial_store(struct kmem_cache *s, const char *buf,
 	unsigned long objects;
 	int err;
 
-	err = strict_strtoul(buf, 10, &objects);
+	err = kstrtoul(buf, 10, &objects);
 	if (err)
 		return err;
 	if (objects && kmem_cache_debug(s))
@@ -4824,7 +4824,7 @@ static ssize_t remote_node_defrag_ratio_store(struct kmem_cache *s,
 	unsigned long ratio;
 	int err;
 
-	err = strict_strtoul(buf, 10, &ratio);
+	err = kstrtoul(buf, 10, &ratio);
 	if (err)
 		return err;
 
@@ -5084,6 +5084,7 @@ static void memcg_propagate_slab_attrs(struct kmem_cache *s)
 		char mbuf[64];
 		char *buf;
 		struct slab_attribute *attr = to_slab_attr(slab_attrs[i]);
+		ssize_t len;
 
 		if (!attr || !attr->store || !attr->show)
 			continue;
@@ -5108,8 +5109,9 @@ static void memcg_propagate_slab_attrs(struct kmem_cache *s)
 			buf = buffer;
 		}
 
-		attr->show(s->memcg_params->root_cache, buf);
-		attr->store(s, buf, strlen(buf));
+		len = attr->show(s->memcg_params->root_cache, buf);
+		if (len > 0)
+			attr->store(s, buf, len);
 	}
 
 	if (buffer)
