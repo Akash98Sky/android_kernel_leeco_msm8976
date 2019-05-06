@@ -59,29 +59,6 @@
 #define PSCI_AFFINITY_LEVEL(lvl) ((lvl & 0x3) << 24)
 static remote_spinlock_t scm_handoff_lock;
 
-enum {
-	MSM_LPM_LVL_DBG_SUSPEND_LIMITS = BIT(0),
-	MSM_LPM_LVL_DBG_IDLE_LIMITS = BIT(1),
-};
-
-enum debug_event {
-	CPU_ENTER,
-	CPU_EXIT,
-	CLUSTER_ENTER,
-	CLUSTER_EXIT,
-	PRE_PC_CB,
-};
-
-struct lpm_debug {
-	cycle_t time;
-	enum debug_event evt;
-	int cpu;
-	uint32_t arg1;
-	uint32_t arg2;
-	uint32_t arg3;
-	uint32_t arg4;
-};
-
 struct lpm_cluster *lpm_root_node;
 
 static bool lpm_prediction;
@@ -114,9 +91,6 @@ static DEFINE_PER_CPU(struct lpm_cluster*, cpu_cluster);
 static bool suspend_in_progress;
 static struct hrtimer lpm_hrtimer;
 static struct hrtimer histtimer;
-static struct lpm_debug *lpm_debug;
-static phys_addr_t lpm_debug_phys;
-static const int num_dbg_elements = 0x100;
 uint32_t cl0_sleep_us;
 uint32_t cl1_sleep_us;
 static int lpm_cpu_callback(struct notifier_block *cpu_nb,
@@ -169,31 +143,6 @@ void lpm_suspend_wake_time(uint64_t wakeup_time)
 		suspend_wake_time = wakeup_time;
 }
 EXPORT_SYMBOL(lpm_suspend_wake_time);
-
-static void update_debug_pc_event(enum debug_event event, uint32_t arg1,
-		uint32_t arg2, uint32_t arg3, uint32_t arg4)
-{
-	struct lpm_debug *dbg;
-	int idx;
-	static DEFINE_SPINLOCK(debug_lock);
-	static int pc_event_index;
-
-	if (!lpm_debug)
-		return;
-
-	spin_lock(&debug_lock);
-	idx = pc_event_index++;
-	dbg = &lpm_debug[idx & (num_dbg_elements - 1)];
-
-	dbg->evt = event;
-	dbg->time = arch_counter_get_cntpct();
-	dbg->cpu = raw_smp_processor_id();
-	dbg->arg1 = arg1;
-	dbg->arg2 = arg2;
-	dbg->arg3 = arg3;
-	dbg->arg4 = arg4;
-	spin_unlock(&debug_lock);
-}
 
 static void setup_broadcast_timer(void *arg)
 {
@@ -965,9 +914,6 @@ static int cluster_configure(struct lpm_cluster *cluster, int idx,
 	}
 
 	if (idx != cluster->default_level) {
-		update_debug_pc_event(CLUSTER_ENTER, idx,
-			cluster->num_children_in_sync.bits[0],
-			cluster->child_cpus.bits[0], sleep_us);
 		trace_cluster_enter(cluster->cluster_name, idx,
 			cluster->num_children_in_sync.bits[0],
 			cluster->child_cpus.bits[0], from_idle);
@@ -1149,9 +1095,6 @@ static void cluster_unprepare(struct lpm_cluster *cluster,
 		cl0_sleep_us = 0;
 	else
 		cl1_sleep_us = 0;
-	update_debug_pc_event(CLUSTER_EXIT, cluster->last_level,
-			cluster->num_children_in_sync.bits[0],
-			cluster->child_cpus.bits[0], from_idle);
 	trace_cluster_exit(cluster->cluster_name, cluster->last_level,
 			cluster->num_children_in_sync.bits[0],
 			cluster->child_cpus.bits[0], from_idle);
@@ -1357,18 +1300,12 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 
 	cluster_prepare(cluster, cpumask, idx, true);
 	lpm_stats_cpu_enter(idx);
-	if (idx > 0)
-		update_debug_pc_event(CPU_ENTER, idx, 0xdeaffeed,
-			gic_return_irq_pending(), true);
 	if (!use_psci)
 		success = msm_cpu_pm_enter_sleep(cluster->cpu->levels[idx].mode,
 				true);
 	else
 		success = psci_enter_sleep(cluster, idx, true);
 
-	if (idx > 0)
-		update_debug_pc_event(CPU_EXIT, idx, success,
-			gic_return_irq_pending(), true);
 	lpm_stats_cpu_exit(idx, success);
 	cluster_unprepare(cluster, cpumask, idx, true);
 	cpu_unprepare(cluster, idx, true);
@@ -1585,9 +1522,6 @@ static int lpm_suspend_enter(suspend_state_t state)
 	}
 	cpu_prepare(cluster, idx, false);
 	cluster_prepare(cluster, cpumask, idx, false);
-	if (idx > 0)
-		update_debug_pc_event(CPU_ENTER, idx, 0xdeaffeed,
-					0xdeaffeed, false);
 
 	/*
 	 * Print the clocks which are enabled during system suspend
@@ -1602,9 +1536,6 @@ static int lpm_suspend_enter(suspend_state_t state)
 	else
 		psci_enter_sleep(cluster, idx, true);
 
-	if (idx > 0)
-		update_debug_pc_event(CPU_EXIT, idx, true, 0xdeaffeed,
-					false);
 	cluster_unprepare(cluster, cpumask, idx, false);
 	cpu_unprepare(cluster, idx, false);
 	return 0;
@@ -1620,7 +1551,6 @@ static const struct platform_suspend_ops lpm_suspend_ops = {
 static int lpm_probe(struct platform_device *pdev)
 {
 	int ret;
-	int size;
 	struct kobject *module_kobj = NULL;
 
 	get_online_cpus();
@@ -1657,9 +1587,6 @@ static int lpm_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	size = num_dbg_elements * sizeof(struct lpm_debug);
-	lpm_debug = dma_alloc_coherent(&pdev->dev, size,
-			&lpm_debug_phys, GFP_KERNEL);
 	register_cluster_lpm_stats(lpm_root_node, NULL);
 
 	ret = cluster_cpuidle_register(lpm_root_node);
@@ -1762,8 +1689,6 @@ enum msm_pm_l2_scm_flag lpm_cpu_pre_pc_cb(unsigned int cpu)
 	 * It must be acquired before releasing the cluster lock.
 	 */
 unlock_and_return:
-	update_debug_pc_event(PRE_PC_CB, retflag, 0xdeadbeef, 0xdeadbeef,
-			0xdeadbeef);
 	trace_pre_pc_cb(retflag);
 	remote_spin_lock_rlock_id(&scm_handoff_lock,
 				  REMOTE_SPINLOCK_TID_START + cpu);
