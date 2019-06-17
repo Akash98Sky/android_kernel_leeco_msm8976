@@ -14256,9 +14256,11 @@ VOS_STATUS wlan_hdd_cfg80211_roam_metrics_preauth_status(
         MAC_ADDR_ARRAY(pRoamInfo->bssid));
 
     if (1 == preauth_status)
-        strncat(metrics_notification, " TRUE", 5);
+        strlcat(metrics_notification, " true",
+            sizeof(metrics_notification));
     else
-        strncat(metrics_notification, " FALSE", 6);
+        strlcat(metrics_notification, " false",
+            sizeof(metrics_notification));
 
     wrqu.data.pointer = metrics_notification;
     wrqu.data.length = strlen(metrics_notification);
